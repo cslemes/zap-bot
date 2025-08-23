@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot Manager</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-width: 350px;
+        }
+
+        h1 {
+            color: #075e54;
+            margin-bottom: 1.5rem;
+        }
+
+        #status-box {
+            padding: 1.5rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin-top: 1rem;
+            transition: background-color 0.3s;
+        }
+
+        #status-box img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 1rem;
+        }
+
+        .status-text {
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .status-disconnected {
+            color: #dc3545;
+        }
+
+        .status-connected {
+            color: #28a745;
+        }
+
+        .status-waiting {
+            color: #ffc107;
+        }
+
+        .status-connecting {
+            color: #17a2b8;
+        }
+
+        button {
+            background-color: #075e54;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin: 0.5rem;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #128c7e;
+        }
+
+        button.disconnect-btn {
+            background-color: #dc3545;
+        }
+
+        button.disconnect-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>WhatsApp Connection Manager</h1>
+
+        <div id="status-box" hx-get="/status" hx-trigger="load, every 2s">
+            Loading initial status...
+        </div>
+
+        <div class="controls">
+            <button hx-post="/connect">Connect</button>
+            <button hx-post="/disconnect" class="disconnect-btn">Disconnect</button>
+        </div>
+    </div>
+</body>
+
+</html>
