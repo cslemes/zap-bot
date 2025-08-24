@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: cslemes/zap-bot:latest
     restart: unless-stopped
     ports:
       - 8080:8080
