@@ -15,4 +15,4 @@ COPY --from=builder /app/zap-bot /app/zap-bot
 COPY index.html index.html
 COPY login-store.db login-store.db
 EXPOSE 8080
-ENTRYPOINT ["/app/zap-bot"]
+ENTRYPOINT ["/zap-bot"]

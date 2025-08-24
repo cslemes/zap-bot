@@ -3,15 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: prod
     restart: unless-stopped
     ports:
-      - ${PORT}:${PORT}
+      - 8080:8080
     environment:
-      APP_ENV: ${APP_ENV}
-      PORT: ${PORT}
-      BLUEPRINT_DB_URL: ${BLUEPRINT_DB_URL}
+      APP_ENV: production
+      GROQ_API_KEY: $GROQ_API_KEY
+      PORT: 8080
     volumes:
-      - sqlite_bp:/app/db
+      - sqlite_bp:/app/login-store.db
 volumes:
   sqlite_bp:
