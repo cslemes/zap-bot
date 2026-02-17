@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,16 +11,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"log"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/joho/godotenv"
 	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
-
-	"github.com/joho/godotenv"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types/events"
@@ -30,6 +31,43 @@ import (
 // Struct for Groq API response
 type GroqTranscriptionResponse struct {
 	Text string `json:"text"`
+}
+
+func searchMessages(db *sql.DB, query string) ([]string, error) {
+	rows, err := db.Query("SELECT data FROM messages WHERE data LIKE ?", "%"+query+"%")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var messageData []byte
+		if err := rows.Scan(&messageData); err != nil {
+			return nil, fmt.Errorf("failed to scan message data: %w", err)
+		}
+
+		var msg waProto.Message
+		if err := proto.Unmarshal(messageData, &msg); err != nil {
+			// Try unmarshalling to ExtendedTextMessage
+			var extendedMsg waProto.ExtendedTextMessage
+			if err := proto.Unmarshal(messageData, &extendedMsg); err == nil {
+				if strings.Contains(extendedMsg.GetText(), query) {
+					results = append(results, extendedMsg.GetText())
+				}
+			}
+		} else {
+			if strings.Contains(msg.GetConversation(), query) {
+				results = append(results, msg.GetConversation())
+			}
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating message rows: %w", err)
+	}
+
+	return results, nil
 }
 
 func transcribeAudio(audioData []byte, apiKey string) (string, error) {
@@ -78,7 +116,7 @@ func transcribeAudio(audioData []byte, apiKey string) (string, error) {
 	return groqResp.Text, nil
 }
 
-func handleMessages(ctx context.Context, client *whatsmeow.Client, evt interface{}, apiKey string) {
+func handleMessages(ctx context.Context, client *whatsmeow.Client, evt interface{}, apiKey string, db *sql.DB) {
 	switch v := evt.(type) {
 	case *events.Message:
 		if v.Message.GetAudioMessage() != nil {
@@ -116,6 +154,46 @@ func handleMessages(ctx context.Context, client *whatsmeow.Client, evt interface
 			if err != nil {
 				fmt.Println("Error sending message:", err)
 			}
+		} else if v.Message.GetConversation() != "" {
+			msgText := v.Message.GetConversation()
+			if strings.HasPrefix(msgText, "!search") {
+				query := strings.TrimSpace(strings.TrimPrefix(msgText, "!search"))
+				if query == "" {
+					_, err := client.SendMessage(ctx, v.Info.Sender, &waProto.Message{
+						Conversation: proto.String("Please provide a search query. Usage: !search <query>"),
+					})
+					if err != nil {
+						fmt.Println("Error sending message:", err)
+					}
+					return
+				}
+
+				results, err := searchMessages(db, query)
+				if err != nil {
+					fmt.Println("Error searching messages:", err)
+					_, err := client.SendMessage(ctx, v.Info.Sender, &waProto.Message{
+						Conversation: proto.String("Error searching messages."),
+					})
+					if err != nil {
+						fmt.Println("Error sending message:", err)
+					}
+					return
+				}
+
+				var responseText string
+				if len(results) == 0 {
+					responseText = "No results found for your query."
+				} else {
+					responseText = "Search results:\n\n" + strings.Join(results, "\n---\n")
+				}
+
+				_, err = client.SendMessage(ctx, v.Info.Sender, &waProto.Message{
+					Conversation: proto.String(responseText),
+				})
+				if err != nil {
+					fmt.Println("Error sending message:", err)
+				}
+			}
 		}
 	}
 }
@@ -133,13 +211,18 @@ func main() {
 	}
 
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
-	ctx := context.Background()
-	container, err := sqlstore.New(ctx, "sqlite3", "file:login-store.db?_foreign_keys=on", dbLog)
+	db, err := sql.Open("sqlite3", "file:login-store.db?_foreign_keys=on")
 	if err != nil {
 		panic(err)
 	}
 
-	deviceStore, err := container.GetFirstDevice(ctx)
+	container := sqlstore.NewWithDB(db, "sqlite3", dbLog)
+	err = container.Upgrade(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	deviceStore, err := container.GetFirstDevice(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -152,7 +235,7 @@ func main() {
 		// Context with timeout per event
 		evtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		handleMessages(evtCtx, client, evt, apiKey)
+		handleMessages(evtCtx, client, evt, apiKey, db)
 	})
 
 	// Login & QR flow
