@@ -52,7 +52,7 @@ jobs:
           source: docker-compose.yml
           target: /app
       - name: Deploy to VM
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           DOTENV_FILE: ${{ secrets.DOTENV_FILE }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
