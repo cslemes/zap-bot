@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zap Bot</title>
+<style>
+body{font:16px system-ui;background:#f0f2f5;color:#182925;margin:0;padding:3rem 1rem}main{max-width:420px;margin:auto;background:white;padding:2rem;border-radius:12px;text-align:center}button{padding:.7rem 1rem;margin:.5rem;border:0;border-radius:6px;cursor:pointer;background:#075e54;color:white}button:disabled{opacity:.5;cursor:default}img{display:block;margin:1rem auto;max-width:100%}[hidden]{display:none}#error{color:#a32020}
+</style>
+</head>
+<body><main><h1>WhatsApp Connection</h1><p id="status" role="status">Loading…</p><p id="uptime"></p><img id="qr" alt="Scan with WhatsApp to sign in" hidden><button id="connect" disabled>Connect</button><button id="disconnect" disabled>Disconnect</button><p id="error" role="alert"></p></main>
+<script>
+const status=document.querySelector('#status'),qr=document.querySelector('#qr'),uptime=document.querySelector('#uptime'),error=document.querySelector('#error'),connect=document.querySelector('#connect'),disconnect=document.querySelector('#disconnect');
+let busy=false;
+async function update(action){
+ if(busy)return;busy=true;
+ try{
+  const response=await fetch(action||'/status',{method:action?'POST':'GET',headers:action?{'X-Zap-Bot':'1'}:{}});
+  if(!response.ok)throw new Error('Request failed ('+response.status+'). Reload to sign in again.');
+  const data=await response.json();status.textContent=data.Status;uptime.textContent=data.Uptime?'Connected for '+data.Uptime:'';
+  qr.hidden=!data.QR;if(data.QR)qr.src='data:image/png;base64,'+data.QR;else qr.removeAttribute('src');
+  connect.disabled=!['Disconnected','Connection Failed'].includes(data.Status);disconnect.disabled=connect.disabled===false;error.textContent='';
+ }catch(e){error.textContent=e.message}finally{busy=false}
+}
+connect.onclick=()=>update('/connect');disconnect.onclick=()=>update('/disconnect');update();setInterval(()=>update(),2000);
+</script></body></html>

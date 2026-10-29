@@ -1,40 +1,72 @@
-
-name: Deploy to VM
+name: Validate and deploy
 
 on:
+  pull_request:
   push:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: test -z "$(gofmt -l main.go internal)"
+      - run: go test -race ./...
+      - run: go vet ./...
+      - name: Check deprecated Go APIs
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 -checks=SA1019 ./...
+      - run: go build -o /tmp/zap-bot .
   deploy:
+    if: github.event_name == 'push'
+    needs: test
     runs-on: ubuntu-latest
     environment: zap-bot-prod
+    concurrency:
+      group: zap-bot-prod
+      cancel-in-progress: false
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/zap-bot:latest
-
-    - name: Deploy to VM via SSH
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USERNAME }}
-        key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
-        script: |
-          cd /app
-          echo "${{ secrets.DOTENV_FILE }}" > .env
-          docker compose pull
-          docker compose up -d
-          echo "Deployment successful!"
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/zap-bot:latest
+      - name: Update Compose configuration
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          source: docker-compose.yml
+          target: /app
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DOTENV_FILE: ${{ secrets.DOTENV_FILE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          envs: DOTENV_FILE,DOCKERHUB_USERNAME
+          script: |
+            set -eu
+            cd /app
+            umask 077
+            printf '%s\n' "$DOTENV_FILE" > .env
+            export BOT_IMAGE="$DOCKERHUB_USERNAME/zap-bot:latest"
+            docker compose config --quiet
+            docker compose pull
+            docker compose up -d --no-build

@@ -34,3 +34,7 @@ main
 
 login-store.db
 
+
+data/
+*.db
+*.db-*

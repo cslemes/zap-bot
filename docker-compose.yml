@@ -1,14 +1,18 @@
 services:
   app:
-    image: cslemes/zap-bot:latest
+    image: ${BOT_IMAGE:-cslemes/zap-bot:latest}
+    build: .
     restart: unless-stopped
     ports:
-      - 8080:8080
+      - "127.0.0.1:8080:8080"
     environment:
-      APP_ENV: production
-      GROQ_API_KEY: $GROQ_API_KEY
-      PORT: 8080
+      TRANSCRIPTION_ENDPOINT: ${TRANSCRIPTION_ENDPOINT:?Set TRANSCRIPTION_ENDPOINT}
+      TRANSCRIPTION_API_KEY: ${TRANSCRIPTION_API_KEY:?Set TRANSCRIPTION_API_KEY}
+      TRANSCRIPTION_MODEL: ${TRANSCRIPTION_MODEL:?Set TRANSCRIPTION_MODEL}
+      TRANSCRIBE_GROUPS: ${TRANSCRIBE_GROUPS:-true}
+      DASHBOARD_USER: ${DASHBOARD_USER:?Set DASHBOARD_USER}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD}
     volumes:
-      - sqlite_bp:/app
+      - bot_data:/data
 volumes:
-  sqlite_bp:
+  bot_data:
